@@ -1,0 +1,14 @@
+services:
+  cartapi:
+    image: jinnybat/ekart.cart.api:latest
+    container_name: cart.api.ps
+    ports:
+      - 5000:8080
+    depends_on:
+      - redis
+
+  redis:
+    image: redis
+    container_name: cart.api.ps.redis
+    ports:
+      - 6379:6379
