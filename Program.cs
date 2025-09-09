@@ -12,7 +12,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddScoped<ICartRepository, CartRepository>();
 builder.Services.AddStackExchangeRedisCache(Options =>
 {
-    Options.Configuration = "localhost:6379";
+    Options.Configuration = "redis";
     Options.InstanceName = "cart.api.redis";
 });
 
