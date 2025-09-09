@@ -1,0 +1,8 @@
+# Ignore folders used by Visual Studio
+**/bin/
+**/obj/
+.vs/
+
+# Ignore source control artifacts
+.git/
+.gitignore
