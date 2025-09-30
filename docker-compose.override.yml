@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: cart.api.ps
     ports:
-      - 5001:8080
+      - 5002:8080
     depends_on:
       - redis
 
