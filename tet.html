@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Samplicity Ecosystem — Interactive Map</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #07101f;
+    --surface:  #0d1a2e;
+    --panel:    #112036;
+    --border:   #1a3050;
+    --teal:     #0eb8cc;
+    --teal-dim: #0d7c8a;
+    --green:    #2ecc8f;
+    --orange:   #f47c3b;
+    --purple:   #9b6ddf;
+    --amber:    #e8a838;
+    --sky:      #38b2f4;
+    --text:     #c8ddf0;
+    --dim:      #4a6880;
+    --glow-t:   rgba(14,184,204,0.35);
+    --glow-g:   rgba(46,204,143,0.35);
+    --glow-o:   rgba(244,124,59,0.35);
+    --glow-p:   rgba(155,109,223,0.35);
+    --glow-a:   rgba(232,168,56,0.35);
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  /* ── CANVAS ── */
+  #canvas {
+    width: 100%; height: 100%;
+    position: relative;
+    cursor: grab;
+    user-select: none;
+  }
+  #canvas.dragging { cursor: grabbing; }
+
+  svg#lines {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  /* ── NODES ── */
+  .node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    transition: filter 0.2s, transform 0.2s;
+  }
+  .node:hover { transform: translate(-50%, -50%) scale(1.06); }
+  .node.collapsed .node-children-hint { opacity: 1; }
+
+  .node-box {
+    border-radius: 10px;
+    border: 1.5px solid;
+    padding: 10px 16px;
+    text-align: center;
+    position: relative;
+    backdrop-filter: blur(6px);
+    transition: box-shadow 0.25s, border-color 0.25s;
+  }
+  .node:hover .node-box {
+    box-shadow: 0 0 28px var(--node-glow, rgba(14,184,204,0.4));
+  }
+
+  .node-code {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: var(--node-color, var(--teal));
+  }
+  .node-label {
+    font-size: 9px;
+    color: var(--dim);
+    margin-top: 2px;
+    line-height: 1.4;
+    max-width: 130px;
+  }
+  .node-portal {
+    font-size: 8px;
+    margin-top: 5px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid;
+    color: var(--node-color, var(--teal));
+    border-color: var(--node-color, var(--teal));
+    opacity: 0.75;
+  }
+
+  /* expand/collapse indicator */
+  .expand-badge {
+    position: absolute;
+    top: -9px; right: -9px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--node-color, var(--teal));
+    color: #07101f;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+    transition: transform 0.2s;
+    font-family: 'Rajdhani', sans-serif;
+  }
+  .node.open .expand-badge { transform: rotate(45deg); }
+
+  /* Root node special */
+  .node-root .node-box {
+    padding: 14px 22px;
+    border-width: 2px;
+  }
+  .node-root .node-code { font-size: 20px; letter-spacing: 3px; }
+
+  /* ── DETAIL PANEL ── */
+  #detail {
+    position: fixed;
+    right: 0; top: 0; bottom: 0;
+    width: 320px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 28px 24px;
+    transform: translateX(100%);
+    transition: transform 0.35s cubic-bezier(.4,0,.2,1);
+    z-index: 100;
+    overflow-y: auto;
+  }
+  #detail.open { transform: translateX(0); }
+
+  .detail-close {
+    position: absolute;
+    top: 16px; right: 16px;
+    background: none; border: 1px solid var(--border);
+    color: var(--dim); cursor: pointer;
+    width: 28px; height: 28px;
+    border-radius: 5px;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .detail-close:hover { border-color: var(--teal); color: var(--teal); }
+
+  .detail-badge {
+    display: inline-block;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  .detail-full {
+    font-size: 11px;
+    color: var(--dim);
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+  .detail-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 14px 0;
+  }
+  .detail-section-title {
+    font-size: 8px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .detail-desc {
+    font-size: 11px;
+    line-height: 1.75;
+    color: var(--text);
+    margin-bottom: 14px;
+  }
+  .detail-portal {
+    font-size: 10px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    border: 1px solid;
+    margin-bottom: 10px;
+    display: inline-block;
+  }
+  .detail-tag {
+    display: inline-block;
+    font-size: 8.5px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    margin: 3px 3px 3px 0;
+    border: 1px solid;
+  }
+  .tag-legacy { color: var(--orange); border-color: var(--orange); background: rgba(244,124,59,0.08); }
+  .tag-latest { color: var(--green); border-color: var(--green); background: rgba(46,204,143,0.08); }
+  .tag-tbd    { color: var(--dim);   border-color: var(--dim);   background: transparent; }
+  .tag-active { color: var(--teal);  border-color: var(--teal);  background: rgba(14,184,204,0.08); }
+
+  /* ── CONTROLS ── */
+  #controls {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 8px;
+    z-index: 50;
+  }
+  .ctrl-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .ctrl-btn:hover { border-color: var(--teal); color: var(--teal); }
+
+  /* ── BREADCRUMB ── */
+  #breadcrumb {
+    position: fixed;
+    top: 18px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 2px;
+    z-index: 50;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .bc-sep { opacity: 0.4; }
+
+  /* ── LEGEND ── */
+  #legend {
+    position: fixed;
+    bottom: 72px; left: 24px;
+    font-size: 9px;
+    color: var(--dim);
+    z-index: 50;
+    line-height: 2;
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 5px;
+    font-size: 10px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 200;
+    max-width: 200px;
+    line-height: 1.5;
+  }
+
+  /* ── TITLE ── */
+  #title-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 14px 24px 0;
+    display: flex; align-items: center; gap: 14px;
+    z-index: 40;
+    pointer-events: none;
+  }
+  #title-bar h1 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 5px;
+    color: var(--teal);
+  }
+  #title-bar span {
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* hint text */
+  #hint {
+    position: fixed;
+    bottom: 72px; right: 24px;
+    font-size: 9px;
+    color: var(--dim);
+    text-align: right;
+    line-height: 2;
+    z-index: 50;
+  }
+</style>
+</head>
+<body>
+
+<div id="title-bar">
+  <h1>SAMPLICITY</h1>
+  <span>Interactive Ecosystem Map</span>
+</div>
+
+<div id="breadcrumb"></div>
+
+<div id="canvas">
+  <svg id="lines"></svg>
+</div>
+
+<div id="detail">
+  <button class="detail-close" onclick="closeDetail()">✕</button>
+  <div id="detail-content"></div>
+</div>
+
+<div id="controls">
+  <button class="ctrl-btn" onclick="zoomIn()">＋ Zoom</button>
+  <button class="ctrl-btn" onclick="zoomOut()">－ Zoom</button>
+  <button class="ctrl-btn" onclick="resetView()">⟳ Reset</button>
+  <button class="ctrl-btn" onclick="expandAll()">Expand All</button>
+  <button class="ctrl-btn" onclick="collapseAll()">Collapse All</button>
+</div>
+
+<div id="legend">
+  <div><span class="legend-dot" style="background:#0eb8cc"></span>Core / Brand</div>
+  <div><span class="legend-dot" style="background:#2ecc8f"></span>Active Channel</div>
+  <div><span class="legend-dot" style="background:#f47c3b"></span>Pending Channel</div>
+  <div><span class="legend-dot" style="background:#e8a838"></span>Infrastructure</div>
+  <div><span class="legend-dot" style="background:#9b6ddf"></span>Reporting</div>
+</div>
+
+<div id="hint">
+  Click node to expand<br>
+  Click again for details<br>
+  Drag to pan · Scroll to zoom
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ─── DATA ──────────────────────────────────────────────────────────────────
+const TREE = {
+  id: 'msm', code: 'MSM', label: 'Marketing & Sample\nManagement', color: '#0eb8cc', glow: 'rgba(14,184,204,0.4)',
+  detail: {
+    full: 'Marketing and Sample Management',
+    desc: 'The MSM platform, commonly referred to as the Samplicity ecosystem, provides end-to-end management of pharmaceutical sample distribution across all channels — from practitioners and representatives to consumers and hospitals.',
+    tags: [{ label: 'Core Platform', cls: 'tag-active' }]
+  },
+  children: [
+    {
+      id: 'samplicity', code: 'SAMPLICITY', label: 'Unified Brand\nEcosystem', color: '#0eb8cc', glow: 'rgba(14,184,204,0.35)',
+      detail: {
+        full: 'Samplicity Ecosystem',
+        desc: 'The overarching brand identity for the MSM platform. Samplicity unifies all distribution channels and infrastructure systems under a single strategic framework, ensuring consistent sample management across every touchpoint.',
+        tags: [{ label: 'Brand Umbrella', cls: 'tag-active' }]
+      },
+      children: [
+        {
+          id: 'channels', code: 'CHANNELS', label: 'Distribution\nChannels', color: '#38b2f4', glow: 'rgba(56,178,244,0.3)',
+          detail: {
+            full: 'Distribution Channels',
+            desc: 'Four distinct channels route product samples and materials to different recipient types — practitioners, representatives, consumers, and hospitals.',
+            tags: []
+          },
+          children: [
+            {
+              id: 'dtp', code: 'DTP', label: 'Direct to\nPractitioner', color: '#0eb8cc', glow: 'rgba(14,184,204,0.35)',
+              portal: 'MySampleCloset.com',
+              detail: {
+                full: 'Direct to Practitioner',
+                desc: 'An e-sampling portal enabling healthcare practitioners to request product samples, support materials, and literature directly from the manufacturer. Streamlines the traditional rep-mediated sample process.',
+                portal: 'https://MySampleCloset.com',
+                tags: [{ label: 'Active', cls: 'tag-active' }, { label: 'Operational', cls: 'tag-active' }]
+              },
+              children: [
+                {
+                  id: 'msc', code: 'MSC', label: 'MySampleCloset\n.com', color: '#0eb8cc', glow: 'rgba(14,184,204,0.3)',
+                  detail: {
+                    full: 'MySampleCloset.com Portal',
+                    desc: 'The practitioner-facing web portal. Practitioners log in to browse available samples, submit requests, view order history, and access product literature and support materials.',
+                    tags: [{ label: 'Live Portal', cls: 'tag-active' }]
+                  },
+                  children: [
+                    { id: 'msc-req', code: 'REQUESTS', label: 'Sample\nRequests', color: '#0eb8cc', glow: 'rgba(14,184,204,0.25)', detail: { full: 'Sample Request Management', desc: 'Practitioners can browse the product catalog and submit requests for physical product samples. Requests flow into KFIS for business rule validation and fulfillment processing.' }, children: [] },
+                    { id: 'msc-lit', code: 'LITERATURE', label: 'Support\nMaterials', color: '#0eb8cc', glow: 'rgba(14,184,204,0.25)', detail: { full: 'Literature & Support Materials', desc: 'Product literature, prescribing information, and educational support materials are accessible alongside sample requests, enabling practitioners to access complete product information.' }, children: [] },
+                    { id: 'msc-hist', code: 'HISTORY', label: 'Order\nHistory', color: '#0eb8cc', glow: 'rgba(14,184,204,0.25)', detail: { full: 'Order History & Tracking', desc: 'Practitioners can review their historical sample requests, track current orders, and view delivery status — all tied into the SIMS sample accountability framework.' }, children: [] }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 'dtr', code: 'DTR', label: 'Direct to\nRepresentative', color: '#2ecc8f', glow: 'rgba(46,204,143,0.35)',
+              portal: 'MyRepCenter.com',
+              detail: {
+                full: 'Direct to Representative',
+                desc: 'A business rule-based sales representative portal for ordering samples and product literature. Reps manage their own sample inventories and distribution to practitioners they call on.',
+                portal: 'https://MyRepCenter.com',
+                tags: [{ label: 'Active', cls: 'tag-active' }, { label: 'Operational', cls: 'tag-active' }]
+              },
+              children: [
+                {
+                  id: 'mrc', code: 'MRC', label: 'MyRepCenter\n.com', color: '#2ecc8f', glow: 'rgba(46,204,143,0.3)',
+                  detail: {
+                    full: 'MyRepCenter.com Portal',
+                    desc: 'The sales representative portal. Reps use this platform to manage their sample inventory, place orders, distribute to practitioners, and comply with PDMA regulatory requirements.',
+                    tags: [{ label: 'Live Portal', cls: 'tag-active' }]
+                  },
+                  children: [
+                    { id: 'mrc-inv', code: 'INVENTORY', label: 'Sample\nInventory', color: '#2ecc8f', glow: 'rgba(46,204,143,0.25)', detail: { full: 'Sample Inventory Management', desc: 'Representatives manage their current sample inventory levels, track what has been dispensed to practitioners, and reconcile against SIMS accountability records.' }, children: [] },
+                    { id: 'mrc-rules', code: 'BUS. RULES', label: 'Business\nRule Engine', color: '#2ecc8f', glow: 'rgba(46,204,143,0.25)', detail: { full: 'Business Rule Engine', desc: 'Intuitive business rules govern what samples reps can order based on their territory, quota, product allocations, and compliance status. Rules are configured centrally and enforced at the portal level.' }, children: [] },
+                    { id: 'mrc-pdma', code: 'PDMA', label: 'PDMA\nCompliance', color: '#2ecc8f', glow: 'rgba(46,204,143,0.25)', detail: { full: 'PDMA Compliance Tracking', desc: 'All rep sample activities are tracked and reported in accordance with the Prescription Drug Marketing Act (PDMA), with complete audit trails flowing into SIMS for accountability reporting.' }, children: [] }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 'dtc', code: 'DTC', label: 'Direct to\nConsumer', color: '#f47c3b', glow: 'rgba(244,124,59,0.35)',
+              portal: 'TBD',
+              detail: {
+                full: 'Direct to Consumer',
+                desc: 'An integrated patient portal whereby consumers can order OTC medications directly from the manufacturer. The specific portal platform is currently under evaluation and identification.',
+                tags: [{ label: 'Pending', cls: 'tag-tbd' }, { label: 'Portal TBD', cls: 'tag-tbd' }]
+              },
+              children: [
+                { id: 'dtc-portal', code: 'PORTAL', label: 'Consumer\nPortal (TBD)', color: '#f47c3b', glow: 'rgba(244,124,59,0.25)', detail: { full: 'Consumer Portal — To Be Identified', desc: 'The consumer-facing portal for direct OTC medication ordering. Platform selection and specifications are currently under evaluation. Will integrate with KFIS for order processing and SIMS for tracking.' }, children: [] },
+                { id: 'dtc-otc', code: 'OTC ORDERS', label: 'OTC Direct\nOrdering', color: '#f47c3b', glow: 'rgba(244,124,59,0.25)', detail: { full: 'OTC Medication Direct Ordering', desc: 'Enables consumers to browse and order over-the-counter medications directly from the manufacturer, bypassing traditional retail channels and providing a direct manufacturer-to-patient relationship.' }, children: [] }
+              ]
+            },
+            {
+              id: 'dth', code: 'DTH', label: 'Direct to\nHospital', color: '#9b6ddf', glow: 'rgba(155,109,223,0.35)',
+              portal: 'TBD',
+              detail: {
+                full: 'Direct to Hospital',
+                desc: 'A hospital-focused distribution channel for direct product sample delivery to hospital systems and pharmacy departments. Portal selection and full specification are currently under identification.',
+                tags: [{ label: 'Pending', cls: 'tag-tbd' }, { label: 'Portal TBD', cls: 'tag-tbd' }]
+              },
+              children: [
+                { id: 'dth-portal', code: 'PORTAL', label: 'Hospital\nPortal (TBD)', color: '#9b6ddf', glow: 'rgba(155,109,223,0.25)', detail: { full: 'Hospital Portal — To Be Identified', desc: 'The institution-facing portal for hospital and health system ordering. Will support bulk ordering, formulary integration, and pharmacy department management. Specifications pending.' }, children: [] },
+                { id: 'dth-pharma', code: 'FORMULARY', label: 'Formulary\nIntegration', color: '#9b6ddf', glow: 'rgba(155,109,223,0.25)', detail: { full: 'Hospital Formulary Integration', desc: 'Planned integration with hospital formulary systems to streamline product sample requisition against approved formulary lists, enabling compliant distribution within institutional settings.' }, children: [] }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'infra', code: 'INFRASTRUCTURE', label: 'Core\nInfrastructure', color: '#e8a838', glow: 'rgba(232,168,56,0.3)',
+          detail: {
+            full: 'Core Infrastructure Systems',
+            desc: 'Three backbone systems power the Samplicity ecosystem: sample accountability (SIMS), order fulfillment processing (KFIS), and enterprise reporting (KADABRA).',
+            tags: []
+          },
+          children: [
+            {
+              id: 'sims', code: 'SA / SIMS', label: 'Sample\nAccountability', color: '#e8a838', glow: 'rgba(232,168,56,0.35)',
+              portal: 'client.sims.knipper.com',
+              detail: {
+                full: 'Sample Inventory Management System',
+                desc: 'A rock-solid sample accountability module built to ensure complete compliance with PDMA guidelines. Tracks all sample movements from manufacturer through to final recipient with full audit trail.',
+                portal: 'http://client.sims.knipper.com',
+                tags: [{ label: 'SIMS 1.0 Legacy', cls: 'tag-legacy' }, { label: 'SIMS 3.0 Latest', cls: 'tag-latest' }]
+              },
+              children: [
+                { id: 'sims1', code: 'SIMS 1.0', label: 'Legacy\nSystem', color: '#e8a838', glow: 'rgba(232,168,56,0.25)', detail: { full: 'SIMS 1.0 — Legacy Platform', desc: 'The original Sample Inventory Management System. Still in use for legacy data and historical record access. Being phased out in favour of the SIMS 3.0 platform.', tags: [{ label: 'Legacy', cls: 'tag-legacy' }] }, children: [] },
+                { id: 'sims3', code: 'SIMS 3.0', label: 'Current\nPlatform', color: '#e8a838', glow: 'rgba(232,168,56,0.25)', detail: { full: 'SIMS 3.0 — Latest Platform', desc: 'The current and actively developed Sample Inventory Management System. Accessed at 
